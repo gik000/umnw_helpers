@@ -1,0 +1,588 @@
+<?php
+
+
+/**
+ * Implements hook_menu().
+ */
+function umnw_helpers_menu() {
+  $items = [];
+
+  $items['admin/config/umnw_helpers'] = [
+    'title' => 'UMNW config section',
+    'description' => 'Un Moscerino Nel Web Helpers section',
+    'position' => 'left',
+    'weight' => -100,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => ['administer site configuration'],
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  ];
+
+  $items['admin/config/umnw_helpers/thumbs_generate'] = [
+    'title' => 'Thumbs generate',
+    'description' => t('manually generate thumbs'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => ['umnw_helpers_thumbs_generate_form'],
+    'access arguments' => ['administer site configuration'],
+  ];
+
+  return $items;
+}
+
+function umnw_helpers_thumbs_generate_form($form, &$form_state) {
+  //getting all styles name
+  $options = _umnw_helpers_get_options_styles();
+  $form['styles'] = [
+    '#type' => 'checkboxes',
+    '#title' => t('Image styles'),
+    '#description' => t('Choose the image styles to generate thumbnails'),
+    '#options' => $options,
+  ];
+  $form['submit'] = [
+    '#type' => 'submit',
+    '#value' => t('Generate'),
+  ];
+
+  return $form;
+}
+
+function umnw_helpers_thumbs_generate_form_submit($form, &$form_state) {
+  //collecting chosen styles
+  $styles = $form_state['values']['styles'];
+  //preparing array
+  foreach ($styles as $id => $value) {
+    if ($id === $value) {
+      //it means we have chosen this style
+      $chosen_styles[$id] = $value;
+    }
+  }
+  //invoking thumbs generation
+  if (isset($chosen_styles)) {
+    _umnw_helpers_generate_thumbs($chosen_styles);
+    drupal_set_message(t('Thumbs successfully generated'));
+  }
+  else {
+    drupal_set_message(t('You must at least one style'));
+  }
+}
+
+
+/**
+ * Check if $that is set, if so return $that
+ * otherwise return NULL
+ *
+ * @param $that
+ *
+ * @return null
+ */
+function _umnw_helpers_that_or_null(&$that) {
+  return isset($that) ? $that : NULL;
+}
+
+/**
+ * @param $form - The form passed by reference
+ * @param $elements - an array with all fields id to hide
+ * @param $admin - unset only for not admin
+ *
+ * Disable will show the field, but users won't be able to change the value in
+ *   it.
+ * #access = FALSE will not output the field to the browser
+ * hidden will create an <input> field of type 'hidden'. It will be sent to the
+ *   browser, and will be editable, but it won't be visible. element-invisible
+ *   will output the field to the browser, but it will be hidden through CSS
+ *
+ */
+function _umnw_helpers_hide_form_element(&$form, $elements, $admin = FALSE) {
+  if (!$admin || ($admin && !_umnw_is_administrator())) {
+    foreach ($elements as $element) {
+      $form[$element]['#prefix'] = "<div style='display:none;'>";
+      $form[$element]['#suffix'] = "</div>";
+    }
+  }
+}
+
+/**
+ * @param $form
+ * @param $elements
+ * @param $admin
+ */
+function _umnw_helpers_readonly_form_element(&$form, $elements, $admin) {
+  if (!$admin || ($admin && !_umnw_is_administrator())) {
+    foreach ($elements as $element) {
+      $form[$element]['#disabled'] = TRUE;
+    }
+  }
+}
+
+/**
+ * @param $form
+ * @param $elements
+ * @param bool $admin
+ */
+function _umnw_helpers_unset_form_element(&$form, $elements, $admin = FALSE) {
+  if (!$admin || ($admin && !_umnw_is_administrator())) {
+    foreach ($elements as $element) {
+      //unset($form[$element]);
+      $form[$element]['#access'] = FALSE;
+    }
+  }
+}
+
+function _umnw_helpers_unset_field_entity(&$entity, $elements) {
+  foreach ($elements as $element) {
+    unset($entity->$element);
+  }
+}
+
+function _umnw_helpers_remove_all_but_fields(&$entity, $elements) {
+  foreach ($entity as $key => $value) {
+    if (strpos($key, 'field_') !== FALSE) {
+      if (!in_array($key, $elements)) {
+        _umnw_helpers_unset_field_entity($entity, [$key]);
+      }
+    }
+  }
+}
+
+/**
+ * checks if the current user is administrator
+ */
+function _umnw_is_administrator() {
+  global $user;
+  if ($user->uid == 1) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * checks if the current user has the role of manager
+ */
+function _umnw_is_manager() {
+  $roles = [
+    'manager',
+  ];
+
+  foreach ($roles as $role) {
+    if (_umnw_has_role($role)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * checks if the current user has the role of super user
+ */
+function _umnw_is_super_user() {
+  $roles = [
+    'super user',
+  ];
+
+  foreach ($roles as $role) {
+    if (_umnw_has_role($role)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * checks if the current user has a role
+ */
+function _umnw_has_role($role, $account = NULL) {
+  if ($account == NULL) {
+    global $user;
+  }
+  else {
+    $user = $account;
+  }
+
+  if (in_array($role, $user->roles)) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * @param $roles
+ * @param $account|NULL
+ *
+ * @return bool
+ * Define access callback
+ */
+function _umnw_has_roles($roles, $account = NULL) {
+  if (is_null($account)) {
+    global $user;
+    $account = $user;
+  }
+
+  foreach ($roles as $role) {
+    if (in_array($role, $account->roles)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+
+/**
+ * This function let you extract database data without using entities
+ * functionality The aim of this function is to offer a lightweight alternative
+ * to entity_load in case you need one or few fields.
+ *
+ * @param string $table_name
+ * @param string /array $field_name
+ * @param array $filter_fields - array of field_name and field_values (strings)
+ *
+ * //EXAMPLE - HOW TO
+ * $filters = array(
+ * 'entity_type' => 'reference_table',
+ * 'bundle' => 'reference_table',
+ * 'entity_id' => 20
+ * );
+ * $res = umnw_extract_db_fields('field_data_field_type', 'field_type_value',
+ *   $filters);
+ *
+ */
+function umnw_extract_db_fields($table_name, $field_name, $filter_fields) {
+  //checking data
+  if ($table_name == '' || count($filter_fields) == 0 || ((is_string($field_name) && $field_name == '') || (is_array($field_name) && empty($field_name)))) {
+    //exit condition matched
+    return FALSE;
+  }
+  else {
+    //checking if is necessary to extract more then one field
+    $fiels2take = "";
+    if (is_string($field_name)) {
+      $fiels2take = 't.' . $field_name . ' ';
+    }
+    elseif (is_array($field_name)) {
+      foreach ($field_name as $name) {
+        $fiels2take .= 't.' . $name . ',';
+      }
+      removeLastComma($fiels2take);
+    }
+    //preparing query text
+    $query = 'SELECT ' . $fiels2take . ' FROM {' . $table_name . '} t WHERE ';
+    //declaring array with filters
+    $values_matching = [];
+    //cycling filters and build WHERE clause
+    foreach ($filter_fields as $name => $value) {
+      $query .= 't.' . $name . ' = :' . $name . ' AND ';
+      $values_matching[':' . $name] = $value;
+    }
+    //removing last "AND "
+    $query = substr($query, 0, -4);
+    //executing query
+    $results = db_query($query, $values_matching);
+    //declaring array with results
+    $ret = [];
+    // Result is returned as a iterable object that returns an array
+    while ($record = $results->fetchAssoc()) {
+      //putting records in return array
+      $ret += $record;
+    }
+    return $ret;
+  }
+}
+
+/**
+ * Return an entity view (html
+ *
+ * @param $id
+ * @param $entity_type
+ * @param string $view_mode
+ *
+ * @return string
+ */
+function _umnw_load_entity_view($id, $entity_type, $view_mode = 'full') {
+  //init return value
+  $entity = NULL;
+  //checking pre conditions
+  if (is_numeric($id) && $id > 0) {
+    $e = entity_load_single($entity_type, $id);
+    $ev = entity_view($entity_type, [$e], $view_mode, $langcode = NULL, $page = NULL);
+  }
+  //return entity view
+  return $ev;
+
+}
+
+
+function _umnw_is_entity_page($entity_type, $bundle) {
+  if (arg(0) == $entity_type && arg(1) == $bundle) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+
+/**
+ * redirect to specific path
+ *
+ * @param $path
+ * @param array $params
+ * EXAMPLE OF PARAMS
+ *
+ * $params = array(
+ * 'arg' => array(
+ * 'number' => 4,
+ * 'checks' => array("isset"),
+ * ),
+ * 'value' => 1
+ * );
+ *
+ */
+function _umnw_redirect($path, $params) {
+  $added_args = [];
+  foreach ($params as $type => $arg) {
+    switch ($type) {
+      case 'value':
+        $added_args[] = $arg;
+        break;
+      case 'arg':
+        if (isset($arg['checks'])) {
+          $val = arg($arg['number']);
+          foreach ($arg['checks'] as $check) {
+            if (function_exists($check) && $check($val)) {
+              $added_args[] = $val;
+            }
+          }
+        }
+    }
+  }
+  if (!empty($added_args)) {
+    $args = implode('/', $added_args);
+    $path .= '/' . $path;
+  }
+  drupal_goto($path);
+}
+
+/**
+ * If styles is not passed to the function this will generate
+ * images for all available styles
+ *
+ * @param null $styles
+ */
+function _umnw_helpers_generate_thumbs($styles = NULL) {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'file')
+    ->entityCondition('bundle', 'image');
+
+
+  $result = $query->execute();
+  if (isset($result['file'])) {
+    //getting all styles
+    if (is_null($styles)) {
+      $styles = image_styles();
+    }
+    else {
+      $styles = _umnw_helpers_get_options_styles();
+    }
+    //init array of result
+    $file_created = [];
+    //loop on files
+    foreach ($result['file'] as $fid => $file) {
+      foreach ($styles as $styleId => $styleName) {
+        $file = file_load($fid);
+        $uri = $file->uri;
+        $url = image_style_url($styleId, $uri);
+        $file_created[$fid] = $url;
+      }
+    }
+  }
+  //printing results
+  if (function_exists('dpm')) {
+    dpm($file_created);
+  }
+  else {
+    print_r($file_created);
+  }
+}
+
+/**
+ * getting image styles as options
+ */
+function _umnw_helpers_get_options_styles() {
+  //getting all image styles
+  $available_styles = image_styles();
+  foreach ($available_styles as $style) {
+    //preparing options array
+    $optionId = $style['name'];
+    $optionValue = $style['label'];
+    $options[$optionId] = $optionValue;
+  }
+  return $options;
+}
+
+/**
+ * Source -> https://github.com/massiws/CodeLogin/blob/master/code_login.module
+ *
+ *
+ * Verify Codice Fiscale Italiano (TIN, Tax Identification Number).
+ *
+ * Verify of Fiscal Code to natural, artificial, legal and juristic
+ * person, with and without same code.
+ */
+function umnw_helpers_validate_fc($fc) {
+  $pattern = "/^([A-Z]{6}[0-9LMNPQRSTUV]{2}[ABCDEHLMPRST]{1}[0-9LMNPQRSTUV]{2}[A-Z]{1}[0-9LMNPQRSTUV]{3}[A-Z]{1})|([0-9]{11})$/i";
+
+  $cf = strtoupper($fc);
+  if ($cf == '' || !preg_match($pattern, $cf)) {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
+/**
+ * @param $element : element of a form
+ * @param $options : array
+ */
+function umnw_helpers_element_as_select_item(&$element, $options) {
+  // Set type as a Select, not textfield.
+  $element['#type'] = 'select';
+  unset($element['#size']);
+
+  // Set the given options.
+  $element['#options'] = $options;
+}
+
+/**
+ * @param $file
+ * @param $delete_too - delete after download
+ */
+function umnw_helpers_force_download($file, $delete_too = FALSE) {
+  header('Content-Description: File Transfer');
+  header('Content-Type: application/octet-stream');
+  header('Content-Disposition: attachment; filename=' . basename($file));
+  header('Content-Transfer-Encoding: binary');
+  header('Expires: 0');
+  header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+  header('Pragma: public');
+  header('Content-Length: ' . filesize($file));
+  ob_clean();
+  flush();
+  readfile($file);
+
+  if ($delete_too) {
+    file_unmanaged_delete($file);
+  }
+
+  drupal_exit();
+}
+
+
+/**
+ * @param $datetime
+ * @param bool $full
+ *
+ * @return string
+ */
+function umnw_helpers_time_elapsed_string($datetime, $full = FALSE) {
+  $now = new DateTime;
+  $ago = new DateTime($datetime);
+  $diff = $now->diff($ago);
+
+  $diff->w = floor($diff->d / 7);
+  $diff->d -= $diff->w * 7;
+
+  $string = [
+    'y' => 'year',
+    'm' => 'month',
+    'w' => 'week',
+    'd' => 'day',
+    'h' => 'hour',
+    'i' => 'minute',
+    's' => 'second',
+  ];
+  foreach ($string as $k => &$v) {
+    if ($diff->$k) {
+      $v = $diff->$k . ' ' . $v . ($diff->$k > 1 ? 's' : '');
+    }
+    else {
+      unset($string[$k]);
+    }
+  }
+
+  if (!$full) {
+    $string = array_slice($string, 0, 1);
+  }
+  return $string ? implode(', ', $string) . ' ago' : 'just now';
+}
+
+/**
+ * Check multiple user_access based on AND or OR.
+ *
+ * @param $permissions
+ *  array of permissions
+ * @param string $condition
+ *  AND or OR, default AND
+ *
+ * @return bool
+ */
+function umnw_helpers_user_multiple_access($permissions, $condition = 'AND') {
+  // AND.
+  if ($condition == 'AND') {
+    foreach ($permissions as $permission) {
+      if (!user_access($permission)) {
+        return FALSE;
+      }
+    }
+  }
+  // OR.
+  else {
+    foreach ($permissions as $permission) {
+      if (user_access($permission)) {
+        return TRUE;
+      }
+    }
+  }
+
+  // Manage default return if loop ends.
+  return ($condition == 'AND') ? TRUE : FALSE;
+}
+
+/**
+ * @param $directories
+ *   array of directory names
+ * @param $module_name
+ * @param $file_extension
+ *   i.e. 'inc'
+ */
+function umnw_helpers_include_files($directories, $module_name, $file_extension) {
+  $module_path = drupal_get_path('module', $module_name);
+
+  // Include all files with given extension.
+  foreach ($directories as $dir_name) {
+    $files = file_scan_directory($module_path . '/' . $dir_name, '/.*\.' . $file_extension .'$/', ['recurse' => TRUE]);
+    foreach ($files as $file) {
+      module_load_include($file_extension, $module_name, '/' . $dir_name . '/' . $file->name);
+    }
+  }
+}
+
+/**
+ * If the current path as an image give it, instead ''
+ */
+function _umnw_helpers_get_current_image_path(){
+  $node = menu_get_object();
+  //TRY TO GET URI
+  if(isset($node->field_image[LANGUAGE_NONE][0]['uri'])) { //main image
+    $uri = $node->field_image[LANGUAGE_NONE][0]['uri'];
+  }
+  //EVALUATING URI
+  if(isset($uri)){
+    return file_create_url($uri); //URI found
+  } else {
+    return ''; //NO URI here
+  }
+}

@@ -1,0 +1,5 @@
+name = UMNW helpers
+description = Helper functions collection
+package = Custom
+author = UnMoscerinoNelWeb
+core = 7.x
